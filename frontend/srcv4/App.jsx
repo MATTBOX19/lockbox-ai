@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import "./v4.css";
 
-const API_BASE = "http://127.0.0.1:8000";
+const API_BASE = "https://lockbox-backend-tcuv.onrender.com";
+
 
 export default function App() {
   const [sport, setSport] = useState("americanfootball_nfl");
