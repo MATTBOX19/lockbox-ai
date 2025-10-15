@@ -42,8 +42,10 @@ export default function App() {
     });
 
     return () => {
-      if (listener?.subscription) {
-        listener.subscription.unsubscribe();
+      try {
+        listener?.subscription?.unsubscribe?.();
+      } catch (e) {
+        console.warn("Auth listener cleanup skipped:", e);
       }
     };
   }, []);
@@ -65,15 +67,19 @@ export default function App() {
           <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
             LockBox AI Login
           </h1>
-          {/* ✅ Wrap Auth in authLoaded check to prevent React hook mismatch */}
-          {authLoaded && (
-            <Auth
-              supabaseClient={supabase}
-              appearance={{ theme: ThemeSupa }}
-              theme="dark"
-              providers={[]}
-            />
-          )}
+          {/* ✅ Guarded mount prevents React hook mismatch */}
+          <div key={authLoaded ? "auth-ready" : "auth-wait"}>
+            {authLoaded ? (
+              <Auth
+                supabaseClient={supabase}
+                appearance={{ theme: ThemeSupa }}
+                theme="dark"
+                providers={[]}
+              />
+            ) : (
+              <p className="text-center text-gray-400">Initializing auth…</p>
+            )}
+          </div>
         </div>
       </div>
     );
