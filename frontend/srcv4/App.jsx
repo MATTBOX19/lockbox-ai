@@ -18,34 +18,40 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [activePick, setActivePick] = useState(null);
 
-  // === AUTH HANDLING ===
+  // === AUTH HANDLING (run hooks first every render) ===
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
     });
+
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+
+      // ✅ Automatically redirect after login/signup
+      if (session) {
+        window.history.replaceState({}, "", "/dashboard");
+      }
     });
+
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  if (!session) {
-    return (
-      <div className="flex justify-center items-center min-h-screen bg-black text-white">
-        <div className="bg-gray-900 p-6 rounded-2xl shadow-xl w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
-            LockBox AI Login
-          </h1>
-          <Auth
-            supabaseClient={supabase}
-            appearance={{ theme: ThemeSupa }}
-            theme="dark"
-            providers={[]}
-          />
-        </div>
+  // === Show Login Screen (render-only conditional, hooks safe) ===
+  const renderLogin = () => (
+    <div className="flex justify-center items-center min-h-screen bg-black text-white">
+      <div className="bg-gray-900 p-6 rounded-2xl shadow-xl w-full max-w-md">
+        <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
+          LockBox AI Login
+        </h1>
+        <Auth
+          supabaseClient={supabase}
+          appearance={{ theme: ThemeSupa }}
+          theme="dark"
+          providers={[]}
+        />
       </div>
-    );
-  }
+    </div>
+  );
 
   // === Fetch Odds ===
   const fetchOdds = async () => {
@@ -114,6 +120,9 @@ export default function App() {
     await supabase.auth.signOut();
     setSession(null);
   };
+
+  // === Render ===
+  if (!session) return renderLogin();
 
   return (
     <div className="v4-container">
@@ -205,8 +214,10 @@ export default function App() {
                       </p>
                       <p className="v4-inline-meta">
                         Conf:{" "}
-                        {(activePick.moneyline?.confidence * 100 || 0).toFixed(1)}%
-                        {" | "}EV:{" "}
+                        {(activePick.moneyline?.confidence * 100 || 0).toFixed(
+                          1
+                        )}
+                        % {" | "}EV:{" "}
                         {(activePick.moneyline?.expected_value * 100 || 0).toFixed(
                           1
                         )}
@@ -226,8 +237,8 @@ export default function App() {
                       </p>
                       <p className="v4-inline-meta">
                         Conf:{" "}
-                        {(activePick.spread?.confidence * 100 || 0).toFixed(1)}% |
-                        {" "}EV:{" "}
+                        {(activePick.spread?.confidence * 100 || 0).toFixed(1)}% |{" "}
+                        EV:{" "}
                         {(activePick.spread?.expected_value * 100 || 0).toFixed(
                           1
                         )}
