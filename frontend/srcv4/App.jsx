@@ -10,11 +10,10 @@ console.log("✅ LockBox loaded from srcv4/App.jsx");
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
 const API_BASE = "https://lockbox-backend-tcuv.onrender.com";
 
-/** Separate login component — isolates hooks so parent never mismatches */
-function Login() {
+// === Simple Login Component ===
+function LoginScreen() {
   return (
     <div className="flex justify-center items-center min-h-screen bg-black text-white">
       <div className="bg-gray-900 p-6 rounded-2xl shadow-xl w-full max-w-md">
@@ -33,6 +32,7 @@ function Login() {
 }
 
 export default function App() {
+  // === Always-declared hooks (stable order) ===
   const [session, setSession] = useState(null);
   const [authLoaded, setAuthLoaded] = useState(false);
   const [sport, setSport] = useState("americanfootball_nfl");
@@ -40,98 +40,82 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [activePick, setActivePick] = useState(null);
 
-  // === AUTH HANDLING ===
+  // === Effect: Initialize Auth ===
   useEffect(() => {
+    let mounted = true;
     const initAuth = async () => {
       try {
         const { data } = await supabase.auth.getSession();
-        setSession(data.session);
+        if (mounted) setSession(data.session);
       } catch (err) {
         console.error("Error getting session:", err);
       } finally {
-        setAuthLoaded(true);
+        if (mounted) setAuthLoaded(true);
       }
     };
-
     initAuth();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess ?? null);
-      setAuthLoaded(true);
+      if (mounted) {
+        setSession(sess ?? null);
+        setAuthLoaded(true);
+      }
     });
 
     return () => {
+      mounted = false;
       listener?.subscription?.unsubscribe?.();
     };
   }, []);
 
-  if (!authLoaded) {
-    return (
-      <div className="flex justify-center items-center min-h-screen bg-black text-white">
-        <p>Loading authentication...</p>
-      </div>
-    );
-  }
+  // === Effect: Fetch Odds when sport changes ===
+  useEffect(() => {
+    if (!authLoaded || !session) return;
+    const fetchOdds = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/odds/${sport}`);
+        const data = await res.json();
+        setGames(data.games || []);
+      } catch (e) {
+        console.error("Error fetching odds:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchOdds();
+  }, [sport, authLoaded, session]);
 
-  // === LOGIN SCREEN ===
-  if (!session) return <Login />;
-
-  // === LOGOUT ===
+  // === Logout ===
   const signOut = async () => {
     await supabase.auth.signOut();
     setSession(null);
   };
 
-  // === FETCH ODDS ===
-  const fetchOdds = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/odds/${sport}`);
-      const data = await res.json();
-      setGames(data.games || []);
-    } catch (e) {
-      console.error("Error fetching odds:", e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchOdds();
-  }, [sport]);
-
-  // === ANALYZE GAME ===
+  // === Analyze Game ===
   const analyzeGame = async (g) => {
     setActivePick({ game: g.game, loading: true });
     try {
-      const mlBody = {
-        sport,
-        home_team: g.home_team,
-        away_team: g.away_team,
-        market: "moneyline",
+      const analyze = async (market) => {
+        const res = await fetch(`${API_BASE}/analyze`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sport,
+            home_team: g.home_team,
+            away_team: g.away_team,
+            market,
+          }),
+        });
+        return res.json();
       };
-      const mlRes = await fetch(`${API_BASE}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(mlBody),
-      });
-      const mlData = await mlRes.json();
 
-      const atsBody = {
-        sport,
-        home_team: g.home_team,
-        away_team: g.away_team,
-        market: "spread",
-      };
-      const atsRes = await fetch(`${API_BASE}/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(atsBody),
-      });
-      const atsData = await atsRes.json();
+      const [mlData, atsData] = await Promise.all([
+        analyze("moneyline"),
+        analyze("spread"),
+      ]);
 
       atsData.spread_value = atsData.spread_value || "-3.5";
-
       setActivePick({
         game: g.game,
         loading: false,
@@ -144,7 +128,17 @@ export default function App() {
     }
   };
 
-  // === MAIN RENDER ===
+  // === Early returns (AFTER all hooks are declared) ===
+  if (!authLoaded)
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-black text-white">
+        <p>Loading authentication...</p>
+      </div>
+    );
+
+  if (!session) return <LoginScreen />;
+
+  // === Main UI ===
   return (
     <div className="v4-container">
       <header className="v4-header">
@@ -170,7 +164,7 @@ export default function App() {
             <option value="baseball_mlb">MLB</option>
             <option value="icehockey_nhl">NHL</option>
           </select>
-          <button onClick={fetchOdds} disabled={loading}>
+          <button onClick={() => setSport(sport)} disabled={loading}>
             {loading ? "Loading…" : "Refresh Odds"}
           </button>
         </div>
@@ -241,9 +235,9 @@ export default function App() {
                           1
                         )}
                         % {" | "}EV:{" "}
-                        {(activePick.moneyline?.expected_value * 100 || 0).toFixed(
-                          1
-                        )}
+                        {(
+                          activePick.moneyline?.expected_value * 100 || 0
+                        ).toFixed(1)}
                         %
                       </p>
                     </div>
@@ -262,9 +256,9 @@ export default function App() {
                         Conf:{" "}
                         {(activePick.spread?.confidence * 100 || 0).toFixed(1)}%
                         {" | "}EV:{" "}
-                        {(activePick.spread?.expected_value * 100 || 0).toFixed(
-                          1
-                        )}
+                        {(
+                          activePick.spread?.expected_value * 100 || 0
+                        ).toFixed(1)}
                         %
                       </p>
                     </div>
