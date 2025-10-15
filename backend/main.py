@@ -124,6 +124,9 @@ async def _get_cached_odds(sport: str):
     return data
 
 # === Routes ===
+@app.get("/")
+def home():
+    return {"status": "ok", "message": "LockBox backend running"}
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
