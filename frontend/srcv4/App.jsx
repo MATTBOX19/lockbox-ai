@@ -13,47 +13,65 @@ const API_BASE = "https://lockbox-backend-tcuv.onrender.com";
 
 export default function App() {
   const [session, setSession] = useState(null);
+  const [authLoaded, setAuthLoaded] = useState(false);
   const [sport, setSport] = useState("americanfootball_nfl");
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activePick, setActivePick] = useState(null);
 
-  // === AUTH HANDLING (run hooks first every render) ===
+  // === AUTH HANDLING ===
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
+    const initAuth = async () => {
+      const { data } = await supabase.auth.getSession();
       setSession(data.session);
-    });
+      setAuthLoaded(true);
+    };
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+    initAuth();
 
-      // ✅ Automatically redirect after login/signup
-      if (session) {
-        window.history.replaceState({}, "", "/dashboard");
-      }
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => {
+      setSession(sess);
+      setAuthLoaded(true);
     });
 
     return () => listener.subscription.unsubscribe();
   }, []);
 
-  // === Show Login Screen (render-only conditional, hooks safe) ===
-  const renderLogin = () => (
-    <div className="flex justify-center items-center min-h-screen bg-black text-white">
-      <div className="bg-gray-900 p-6 rounded-2xl shadow-xl w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
-          LockBox AI Login
-        </h1>
-        <Auth
-          supabaseClient={supabase}
-          appearance={{ theme: ThemeSupa }}
-          theme="dark"
-          providers={[]}
-        />
+  // === LOADING STATE WHILE AUTH INITIALIZES ===
+  if (!authLoaded) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-black text-white">
+        <p>Loading authentication...</p>
       </div>
-    </div>
-  );
+    );
+  }
 
-  // === Fetch Odds ===
+  // === LOGIN SCREEN ===
+  if (!session) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-black text-white">
+        <div className="bg-gray-900 p-6 rounded-2xl shadow-xl w-full max-w-md">
+          <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
+            LockBox AI Login
+          </h1>
+          <Auth
+            supabaseClient={supabase}
+            appearance={{ theme: ThemeSupa }}
+            theme="dark"
+            providers={[]}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // === LOGOUT ===
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+  };
+
+  // === FETCH ODDS ===
   const fetchOdds = async () => {
     setLoading(true);
     try {
@@ -67,7 +85,11 @@ export default function App() {
     }
   };
 
-  // === Analyze Both Markets (Moneyline + Spread) ===
+  useEffect(() => {
+    fetchOdds();
+  }, [sport]);
+
+  // === ANALYZE GAME ===
   const analyzeGame = async (g) => {
     setActivePick({ game: g.game, loading: true });
     try {
@@ -111,19 +133,7 @@ export default function App() {
     }
   };
 
-  useEffect(() => {
-    fetchOdds();
-  }, [sport]);
-
-  // === LOGOUT ===
-  const signOut = async () => {
-    await supabase.auth.signOut();
-    setSession(null);
-  };
-
-  // === Render ===
-  if (!session) return renderLogin();
-
+  // === MAIN RENDER ===
   return (
     <div className="v4-container">
       <header className="v4-header">
@@ -202,7 +212,9 @@ export default function App() {
                   onClick={() => analyzeGame(g)}
                   disabled={isActive && activePick.loading}
                 >
-                  {isActive && activePick.loading ? "Analyzing…" : "Analyze Pick"}
+                  {isActive && activePick.loading
+                    ? "Analyzing…"
+                    : "Analyze Pick"}
                 </button>
 
                 {isActive && !activePick.loading && !activePick.error && (
@@ -237,8 +249,8 @@ export default function App() {
                       </p>
                       <p className="v4-inline-meta">
                         Conf:{" "}
-                        {(activePick.spread?.confidence * 100 || 0).toFixed(1)}% |{" "}
-                        EV:{" "}
+                        {(activePick.spread?.confidence * 100 || 0).toFixed(1)}%
+                        {" | "}EV:{" "}
                         {(activePick.spread?.expected_value * 100 || 0).toFixed(
                           1
                         )}
