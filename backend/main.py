@@ -1,4 +1,3 @@
-# backend/main.py
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -71,18 +70,13 @@ def _h2h_prices(game: dict):
     return None, None
 
 def _median_home_spread(game: dict):
-    """
-    Build consensus home spread (median of all US books that list 'spreads').
-    For MLB this is typically the run line (±1.5).
-    Returns (home_spread, away_spread) or (None, None) if no spread market.
-    """
+    """Build consensus home spread (median of all US books that list 'spreads')."""
     home, away = game.get("home_team"), game.get("away_team")
     pts = []
     for bm in _first_valid_bookmakers(game):
         for m in bm.get("markets", []):
             if m.get("key") != "spreads":
                 continue
-            # find home outcome
             for o in m.get("outcomes", []):
                 if o.get("name") == home and isinstance(o.get("point"), (int, float)):
                     pts.append(float(o["point"]))
@@ -105,12 +99,24 @@ def _clearly_past_or_live(game: dict, kickoff: datetime, now: datetime) -> bool:
 def health():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
 
+
+@app.get("/test-supabase")
+def test_supabase():
+    """
+    Quick test endpoint to confirm Supabase connection.
+    ⚠️ Safe to leave in staging; remove after confirming 'connected'.
+    """
+    try:
+        data = supabase.table("bankroll").select("*").limit(1).execute()
+        count = len(data.data) if data.data else 0
+        return {"status": "connected", "rows_found": count}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
 @app.get("/odds/{sport}")
 async def get_odds(sport: str):
-    """
-    Return upcoming games with ACTUAL ML and ACTUAL SPREAD (consensus median).
-    No defaults. If a market doesn't exist (e.g., some leagues), spread fields are null.
-    """
+    """Return upcoming games with ACTUAL ML and ACTUAL SPREAD (consensus median)."""
     if sport not in SUPPORTED_SPORTS:
         return {"error": f"Unsupported sport: {sport}"}
 
@@ -129,39 +135,33 @@ async def get_odds(sport: str):
     now = datetime.now(timezone.utc)
     grace = timedelta(minutes=15)
     future = timedelta(days=8)
-
     out = []
+
     for g in data:
         kickoff = _parse_iso(g.get("commence_time"))
-        if not kickoff: 
+        if not kickoff or kickoff <= now + grace or kickoff > now + future:
             continue
-        if kickoff <= now + grace: 
-            continue
-        if kickoff > now + future: 
-            continue
-        if _clearly_past_or_live(g, kickoff, now): 
+        if _clearly_past_or_live(g, kickoff, now):
             continue
 
         home_ml, away_ml = _h2h_prices(g)
         if home_ml is None or away_ml is None:
-            # Must have ML to list a game
             continue
-
-        home_sp, away_sp = _median_home_spread(g)  # can be (None, None)
-
+        home_sp, away_sp = _median_home_spread(g)
         out.append({
             "game": f"{g.get('away_team')} vs {g.get('home_team')}",
             "home_team": g.get("home_team"),
             "away_team": g.get("away_team"),
             "home_odds": home_ml,
             "away_odds": away_ml,
-            "home_spread": home_sp,    # None if no spreads
-            "away_spread": away_sp,    # None if no spreads
+            "home_spread": home_sp,
+            "away_spread": away_sp,
             "commence": kickoff.isoformat().replace("+00:00","Z"),
         })
 
     out.sort(key=lambda x: x["commence"])
     return {"sport": sport, "games": out}
+
 
 @app.post("/analyze")
 async def analyze(req: AnalysisRequest):
@@ -189,9 +189,7 @@ async def analyze(req: AnalysisRequest):
     if home_ml is None or away_ml is None:
         return {"error": "Moneyline not available"}
 
-    home_sp, away_sp = _median_home_spread(match)  # may be None
-
-    # Build model input
+    home_sp, away_sp = _median_home_spread(match)
     model_input = {
         "home_team": req.home_team,
         "away_team": req.away_team,
@@ -199,23 +197,17 @@ async def analyze(req: AnalysisRequest):
         "away_odds": away_ml,
     }
     if req.market == "spread":
-        # Only include spread if it exists; do NOT fake a value
         if home_sp is None:
             return {"error": "Spread market not available"}
-        model_input["spread"] = home_sp  # home line; away is -home
+        model_input["spread"] = home_sp
 
-    # Load bankroll
     br = supabase.table("bankroll").select("*").limit(1).execute()
     bankroll = br.data[0]["amount"] if br.data else 1000.0
-
-    # Run your model
     result = analyze_game(model_input, bankroll)
 
-    # Attach spread to response when ATS
     if req.market == "spread":
         result["spread_value"] = home_sp
 
-    # Save bet
     supabase.table("bets").insert({
         "game": result["game"],
         "pick": result["pick"],
