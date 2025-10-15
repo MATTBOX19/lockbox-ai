@@ -13,6 +13,25 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const API_BASE = "https://lockbox-backend-tcuv.onrender.com";
 
+/** Separate login component — isolates hooks so parent never mismatches */
+function Login() {
+  return (
+    <div className="flex justify-center items-center min-h-screen bg-black text-white">
+      <div className="bg-gray-900 p-6 rounded-2xl shadow-xl w-full max-w-md">
+        <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
+          LockBox AI Login
+        </h1>
+        <Auth
+          supabaseClient={supabase}
+          appearance={{ theme: ThemeSupa }}
+          theme="dark"
+          providers={[]}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [session, setSession] = useState(null);
   const [authLoaded, setAuthLoaded] = useState(false);
@@ -42,15 +61,10 @@ export default function App() {
     });
 
     return () => {
-      try {
-        listener?.subscription?.unsubscribe?.();
-      } catch (e) {
-        console.warn("Auth listener cleanup skipped:", e);
-      }
+      listener?.subscription?.unsubscribe?.();
     };
   }, []);
 
-  // === LOADING STATE WHILE AUTH INITIALIZES ===
   if (!authLoaded) {
     return (
       <div className="flex justify-center items-center min-h-screen bg-black text-white">
@@ -60,30 +74,7 @@ export default function App() {
   }
 
   // === LOGIN SCREEN ===
-  if (!session) {
-    return (
-      <div className="flex justify-center items-center min-h-screen bg-black text-white">
-        <div className="bg-gray-900 p-6 rounded-2xl shadow-xl w-full max-w-md">
-          <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
-            LockBox AI Login
-          </h1>
-          {/* ✅ Guarded mount prevents React hook mismatch */}
-          <div key={authLoaded ? "auth-ready" : "auth-wait"}>
-            {authLoaded ? (
-              <Auth
-                supabaseClient={supabase}
-                appearance={{ theme: ThemeSupa }}
-                theme="dark"
-                providers={[]}
-              />
-            ) : (
-              <p className="text-center text-gray-400">Initializing auth…</p>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (!session) return <Login />;
 
   // === LOGOUT ===
   const signOut = async () => {
