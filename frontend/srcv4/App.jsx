@@ -1,14 +1,51 @@
 import React, { useEffect, useState } from "react";
 import "./v4.css";
+import { createClient } from "@supabase/supabase-js";
+import { Auth } from "@supabase/auth-ui-react";
+import { ThemeSupa } from "@supabase/auth-ui-shared";
+
+// === Setup Supabase ===
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const API_BASE = "https://lockbox-backend-tcuv.onrender.com";
 
-
 export default function App() {
+  const [session, setSession] = useState(null);
   const [sport, setSport] = useState("americanfootball_nfl");
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [activePick, setActivePick] = useState(null);
+
+  // === AUTH HANDLING ===
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session);
+    });
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  if (!session) {
+    return (
+      <div className="flex justify-center items-center min-h-screen bg-black text-white">
+        <div className="bg-gray-900 p-6 rounded-2xl shadow-xl w-full max-w-md">
+          <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
+            LockBox AI Login
+          </h1>
+          <Auth
+            supabaseClient={supabase}
+            appearance={{ theme: ThemeSupa }}
+            theme="dark"
+            providers={[]}
+          />
+        </div>
+      </div>
+    );
+  }
 
   // === Fetch Odds ===
   const fetchOdds = async () => {
@@ -27,9 +64,7 @@ export default function App() {
   // === Analyze Both Markets (Moneyline + Spread) ===
   const analyzeGame = async (g) => {
     setActivePick({ game: g.game, loading: true });
-
     try {
-      // Moneyline analysis
       const mlBody = {
         sport,
         home_team: g.home_team,
@@ -43,7 +78,6 @@ export default function App() {
       });
       const mlData = await mlRes.json();
 
-      // ATS analysis
       const atsBody = {
         sport,
         home_team: g.home_team,
@@ -57,7 +91,6 @@ export default function App() {
       });
       const atsData = await atsRes.json();
 
-      // Placeholder spread (if API doesn’t include one yet)
       atsData.spread_value = atsData.spread_value || "-3.5";
 
       setActivePick({
@@ -76,11 +109,25 @@ export default function App() {
     fetchOdds();
   }, [sport]);
 
+  // === LOGOUT ===
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+  };
+
   return (
     <div className="v4-container">
       <header className="v4-header">
-        <h1>⚡ LockBox AI v4</h1>
-        <p>Smart Sports Picks — Dual Market Model (ML + ATS)</p>
+        <div className="flex justify-between items-center w-full">
+          <div>
+            <h1>⚡ LockBox AI v4</h1>
+            <p>Smart Sports Picks — Dual Market Model (ML + ATS)</p>
+          </div>
+          <button onClick={signOut} className="v4-logout">
+            Logout
+          </button>
+        </div>
+
         <div className="v4-controls">
           <select
             value={sport}
@@ -149,10 +196,8 @@ export default function App() {
                   {isActive && activePick.loading ? "Analyzing…" : "Analyze Pick"}
                 </button>
 
-                {/* === INLINE RESULT AREA === */}
                 {isActive && !activePick.loading && !activePick.error && (
                   <div className="v4-inline-result">
-                    {/* MONEYLINE */}
                     <div className="ml">
                       <p className="v4-inline-label">💰 Moneyline Pick:</p>
                       <p className="v4-inline-pick">
@@ -167,28 +212,10 @@ export default function App() {
                         )}
                         %
                       </p>
-
-                      {activePick.moneyline?.confidence > 0.8 ? (
-                        <div className="v4-inline-verified">
-                          🔒 LOCKBOX LOCK – Elite Confidence
-                        </div>
-                      ) : activePick.moneyline?.confidence > 0.7 ? (
-                        <div className="v4-inline-verified">
-                          ✅ AI Verified – High Confidence
-                        </div>
-                      ) : activePick.moneyline?.confidence > 0.5 ? (
-                        <div
-                          className="v4-inline-verified"
-                          style={{ color: "#00b7ff" }}
-                        >
-                          🧠 Model Lean – Medium Confidence
-                        </div>
-                      ) : null}
                     </div>
 
                     <div className="v4-divider"></div>
 
-                    {/* ATS */}
                     <div className="ats">
                       <p className="v4-inline-label">📏 ATS Pick:</p>
                       <p className="v4-inline-pick">
@@ -206,23 +233,6 @@ export default function App() {
                         )}
                         %
                       </p>
-
-                      {activePick.spread?.confidence > 0.8 ? (
-                        <div className="v4-inline-verified">
-                          🔒 LOCKBOX LOCK – Elite Confidence
-                        </div>
-                      ) : activePick.spread?.confidence > 0.7 ? (
-                        <div className="v4-inline-verified">
-                          ✅ AI Verified – High Confidence
-                        </div>
-                      ) : activePick.spread?.confidence > 0.5 ? (
-                        <div
-                          className="v4-inline-verified"
-                          style={{ color: "#00b7ff" }}
-                        >
-                          🧠 Model Lean – Medium Confidence
-                        </div>
-                      ) : null}
                     </div>
                   </div>
                 )}
