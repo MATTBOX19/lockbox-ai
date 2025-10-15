@@ -42,7 +42,8 @@ class AnalysisRequest(BaseModel):
 
 # === Helpers ===
 def _parse_iso(ts: str):
-    if not ts: return None
+    if not ts:
+        return None
     try:
         return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc)
     except Exception:
@@ -57,7 +58,7 @@ def _h2h_prices(game: dict):
     home, away = game.get("home_team"), game.get("away_team")
     for bm in _first_valid_bookmakers(game):
         for m in bm.get("markets", []):
-            if m.get("key") != "h2h": 
+            if m.get("key") != "h2h":
                 continue
             home_ml = away_ml = None
             for o in m.get("outcomes", []):
@@ -98,20 +99,6 @@ def _clearly_past_or_live(game: dict, kickoff: datetime, now: datetime) -> bool:
 @app.get("/health")
 def health():
     return {"status": "ok", "timestamp": datetime.now().isoformat()}
-
-
-@app.get("/test-supabase")
-def test_supabase():
-    """
-    Quick test endpoint to confirm Supabase connection.
-    ⚠️ Safe to leave in staging; remove after confirming 'connected'.
-    """
-    try:
-        data = supabase.table("bankroll").select("*").limit(1).execute()
-        count = len(data.data) if data.data else 0
-        return {"status": "connected", "rows_found": count}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
 
 @app.get("/odds/{sport}")
@@ -156,7 +143,7 @@ async def get_odds(sport: str):
             "away_odds": away_ml,
             "home_spread": home_sp,
             "away_spread": away_sp,
-            "commence": kickoff.isoformat().replace("+00:00","Z"),
+            "commence": kickoff.isoformat().replace("+00:00", "Z"),
         })
 
     out.sort(key=lambda x: x["commence"])
@@ -181,7 +168,7 @@ async def analyze(req: AnalysisRequest):
         r = await c.get(f"{ODDS_API_BASE}/{req.sport}/odds", params=params)
         data = r.json()
 
-    match = next((g for g in data if g.get("home_team")==req.home_team and g.get("away_team")==req.away_team), None)
+    match = next((g for g in data if g.get("home_team") == req.home_team and g.get("away_team") == req.away_team), None)
     if not match:
         return {"error": "Game not found"}
 
