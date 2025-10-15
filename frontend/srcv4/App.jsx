@@ -3,8 +3,8 @@ import "./v4.css";
 import { createClient } from "@supabase/supabase-js";
 import { Auth } from "@supabase/auth-ui-react";
 import { ThemeSupa } from "@supabase/auth-ui-shared";
-console.log("✅ LockBox loaded from srcv4/App.jsx");
 
+console.log("✅ LockBox loaded from srcv4/App.jsx");
 
 // === Setup Supabase ===
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -24,19 +24,28 @@ export default function App() {
   // === AUTH HANDLING ===
   useEffect(() => {
     const initAuth = async () => {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
-      setAuthLoaded(true);
+      try {
+        const { data } = await supabase.auth.getSession();
+        setSession(data.session);
+      } catch (err) {
+        console.error("Error getting session:", err);
+      } finally {
+        setAuthLoaded(true);
+      }
     };
 
     initAuth();
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, sess) => {
-      setSession(sess);
+      setSession(sess ?? null);
       setAuthLoaded(true);
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      if (listener?.subscription) {
+        listener.subscription.unsubscribe();
+      }
+    };
   }, []);
 
   // === LOADING STATE WHILE AUTH INITIALIZES ===
@@ -56,12 +65,15 @@ export default function App() {
           <h1 className="text-2xl font-bold mb-4 text-center text-blue-400">
             LockBox AI Login
           </h1>
-          <Auth
-            supabaseClient={supabase}
-            appearance={{ theme: ThemeSupa }}
-            theme="dark"
-            providers={[]}
-          />
+          {/* ✅ Wrap Auth in authLoaded check to prevent React hook mismatch */}
+          {authLoaded && (
+            <Auth
+              supabaseClient={supabase}
+              appearance={{ theme: ThemeSupa }}
+              theme="dark"
+              providers={[]}
+            />
+          )}
         </div>
       </div>
     );
